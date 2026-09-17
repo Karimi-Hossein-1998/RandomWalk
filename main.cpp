@@ -187,7 +187,7 @@ int main(int argc, char* argv[])
 	std::vector<Walker> walkers; walkers.reserve(numWalkers);
 	for (uint64_t i{}; i<numWalkers; ++i)
 		walkers.emplace_back(Walker(Color(RNG::uid256(RNG::rngr),RNG::uid256(RNG::rngr),RNG::uid256(RNG::rngr),255),width/2.0,height/2.0,3.0,wms));
-	Canvas canvas(width,height,"Walker Straight");
+	Canvas canvas(width,height,"Walkers");
 	if (!canvas.CanvasCreateWindow())
 		return -1;
 
