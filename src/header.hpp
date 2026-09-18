@@ -13,6 +13,8 @@
 #include <array>
 #include <random>
 #include <utility>
+#include <algorithm>
+#include "../ankerl/unordered_dense.h"
 // #include <print>
 
 namespace RNG{
@@ -245,6 +247,20 @@ class Walker
 			if (X>=W) X -= W; else if (X<=0.0) X += W;
 			if (Y>=H) Y -= H; else if (Y<=0.0) Y += H;
 		}
+		void Draw(SDL_Renderer* renderer)
+		{
+			SDL_SetRenderDrawColor(renderer,static_cast<Uint8>(WalkerColor.GetR()),static_cast<Uint8>(WalkerColor.GetG()),static_cast<Uint8>(WalkerColor.GetB()),static_cast<Uint8>(WalkerColor.GetA()));
+			float x = static_cast<float>(X); float y = static_cast<float>(Y); float size = static_cast<float>(Size);
+			if (size<=1.0f)
+			{
+				SDL_RenderPoint(renderer,x,y);
+			}
+			else
+			{
+				SDL_FRect rect{x-size/2.0f,y-size/2.0f,size,size};
+				SDL_RenderFillRect(renderer,&rect);
+			}
+		}
 		const double GetX() const noexcept {return X;}
 		void SetX(double x) noexcept {X=x;} 
 		const double GetY() const noexcept {return Y;}
@@ -257,18 +273,67 @@ class Walker
 		void SetSize(double s) noexcept {Size=s;}
 };
 
-void DrawWalker(SDL_Renderer* renderer, const Walker& walker)
+
+// Details for Trail effect
+struct TrailCell
 {
-	SDL_SetRenderDrawColor(renderer,static_cast<Uint8>(walker.GetR()),static_cast<Uint8>(walker.GetG()),static_cast<Uint8>(walker.GetB()),static_cast<Uint8>(walker.GetA()));
-	float x = static_cast<float>(walker.GetX()); float y = static_cast<float>(walker.GetY()); float size = static_cast<float>(walker.GetSize());
-	if (size<=1.0f)
-	{
-		SDL_RenderPoint(renderer,x,y);
-	}
-	else
-	{
-		SDL_FRect rect{x-size/2.0f,y-size/2.0f,size,size};
-		SDL_RenderFillRect(renderer,&rect);
-	}
-}
+	double Size{1.0};
+	uint64_t walkerID;
+	uint64_t walkerAge{0};
+	unsigned short R,G,B;
+};
+
+using TrailMap = ankerl::unordered_dense::map<uint64_t,TrailCell>;
+
+class TrailManager
+{
+	private:
+		TrailMap trailMap;
+		uint64_t Width;
+		uint64_t Height;
+		uint16_t maxAge;
+
+		[[nodiscard]] uint64_t ToKey(double x, double y) const noexcept
+		{
+			uint64_t ux = static_cast<uint64_t>(std::clamp(x,0.0,static_cast<double>(Width-1)));
+			uint64_t uy = static_cast<uint64_t>(std::clamp(y,0.0,static_cast<double>(Height-1)));
+			return ux + uy*Width;
+		}
+	public:
+		TrailManager(uint64_t w, uint64_t h, uint16_t ma) : Width(w), Height(h), maxAge(ma) {}
+
+		void Step()
+		{
+			for (auto& [key,cell] : trailMap) ++cell.walkerAge;
+			std::erase_if(trailMap,[this](const auto& item)->bool{return item.second.walkerAge > maxAge;});
+		}
+		void RecordWalker(uint64_t walkerId, double x, double y, double size, unsigned short r, unsigned short g, unsigned short b)
+		{
+			uint64_t key = ToKey(x,y);
+			trailMap[key] = TrailCell{
+				.Size      = size,
+				.walkerID = walkerId,
+				.walkerAge = 0,
+				.R = r,
+				.G = g,
+				.B = b
+			};
+		}
+
+		void Draw(SDL_Renderer* renderer)
+		{
+			SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+			for (const auto& [key,cell] : trailMap)
+			{
+				float x = static_cast<float>(key%Width);
+				float y = static_cast<float>(key)/static_cast<float>(Width);
+				float fade = 1.0f - static_cast<float>(cell.walkerAge)/static_cast<float>(maxAge);
+				Uint8 alpha = static_cast<Uint8>(std::clamp(fade*255.0f,0.0f,255.0f));
+				SDL_SetRenderDrawColor(renderer, cell.R, cell.G, cell.B, alpha);
+				float size = static_cast<float>(cell.Size)*fade;
+				if (cell.Size<=1.0) SDL_RenderPoint(renderer,x,y);
+				else {SDL_FRect rect{x-size/2.0f,y-size/2.0f,size,size}; SDL_RenderFillRect(renderer,&rect);}
+			}
+		}
+};
 

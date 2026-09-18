@@ -32,6 +32,9 @@ inline constexpr const char* SETN = {"-N"};
 void printhelp()
 {
 	std::printf("Usage: The following flags are available.\n");
+	std::printf("\t--no-trail OR -NT: Set trailing off.\n");
+	std::printf("\t--aperture OR -A: Set the size of each walker (it expects a double-precision floating-point value).\n");
+	std::printf("\t-TL OR --trail-length: Set the fading criterion for the trail.\n");
 	std::printf("\t-N: Set the number of random walkers, i.e. `-N 10000` will set 10000 walkers.\n");
 	std::printf("\t-W: Set the 'width' of the canvas, e.g. `-W 800`.\n");
 	std::printf("\t-H: Set the 'height' of the canvas, e.g. `-H 600`.\n");
@@ -102,7 +105,7 @@ void setwms(int i, int argc, char** argv, WalkerMoveStyle& wms, uint16_t& wmsCou
 		}
 		else
 		{
-			std::printf("No valid argument was provided, see \"--help\" OR \"-H\"");
+			std::printf("No valid argument was provided (on flag %d which says \"%s\"), see \"--help\" OR \"-H\"",i,argv[i]);
 		}
 	}
 	else
@@ -111,86 +114,124 @@ void setwms(int i, int argc, char** argv, WalkerMoveStyle& wms, uint16_t& wmsCou
 	}
 }
 
+inline void Run(bool trail, uint64_t width, uint64_t height, uint64_t numWalkers, double size, WalkerMoveStyle wms,uint64_t maxAge);
+
 int main(int argc, char* argv[])
 {
+	bool trailing = true;
 	WalkerMoveStyle wms = WalkerMoveStyle::Straight;
 	uint64_t width = 900;
 	uint64_t height = 600;
+	uint64_t maxAge = 500;
 	uint64_t numWalkers = 200;
 	uint16_t wmsCount = 0;
+	double size = 5.0;
 	for (int i{1}; i<argc; ++i)
 	{
-		if (argc>i)
+		std::string_view arg = argv[i];
+		if (arg == help || arg == HELP)
 		{
-			std::string_view arg = argv[i];
-			if (arg == help || arg == HELP)
-			{
-				printhelp();
-				return 0;
-			}
-			else if ((arg == swms || arg == SWMS) && wmsCount==0)
-			{
-				if (wmsCount==0)
-				{
-					++i;
-					setwms(i,argc,argv,wms,wmsCount);
-				}
-				else
-				{
-					++i;
-					std::printf("Have set WalkerMoveStyle before! Ignoring this flag and corresponding value");
-				}
-			}
-			else if (arg == SETW)
+			printhelp();
+			return 0;
+		}
+		else if ((arg == swms || arg == SWMS) && wmsCount==0)
+		{
+			if (wmsCount==0)
 			{
 				++i;
-				if (argc>i)
-				{
-					width = std::stoul(argv[i]);
-				}
-				else
-				{
-					std::printf("Reached EOF!\n");
-				}
-			}
-			else if (arg == SETH)
-			{
-				++i;
-				if (argc>i)
-				{
-					height = std::stoul(argv[i]);
-				}
-				else
-				{
-					std::printf("Reached EOF!\n");
-				}
-			}
-			else if (arg == SETN)
-			{
-				++i;
-				if (argc>i)
-				{
-					numWalkers = std::stoul(argv[i]);
-				}
-				else
-				{
-					std::printf("Reached EOF!\n");
-				}
+				setwms(i,argc,argv,wms,wmsCount);
 			}
 			else
 			{
-				std::printf("Undefined flag! ignoring...\n");
+				++i;
+				std::printf("Have set WalkerMoveStyle before! Ignoring this (flag %d : %s) and corresponding value (flag %d : %s)",i-1,argv[i-1],i,argv[i]);
 			}
 		}
+		else if (arg == SETW)
+		{
+			++i;
+			if (argc>i)
+			{
+				width = std::stoul(argv[i]);
+			}
+			else
+			{
+				std::printf("Reached EOF!\n");
+			}
+		}
+		else if (arg == SETH)
+		{
+			++i;
+			if (argc>i)
+			{
+				height = std::stoul(argv[i]);
+			}
+			else
+			{
+				std::printf("Reached EOF!\n");
+			}
+		}
+		else if (arg == SETN)
+		{
+			++i;
+			if (argc>i)
+			{
+				numWalkers = std::stoul(argv[i]);
+			}
+			else
+			{
+				std::printf("Reached EOF!\n");
+			}
+		}
+		else if (arg == "--no-trail" || arg == "-NT")
+		{
+			trailing = false;
+		}
+		else if (arg == "--trail-length" || arg == "-TL")
+		{
+			++i;
+			if (argc>i)
+			{
+				maxAge = std::stoul(argv[i]);
+			}
+			else
+			{
+				std::printf("Reached EOF!\n");
+			}
+		}
+		else if (arg == "--aperture" || arg == "-A")
+		{
+			++i;
+			if (argc>i)
+			{
+				size = std::stod(argv[i]);
+			}
+			else
+			{
+				std::printf("Reached EOF!\n");
+			}
+		}
+		else
+		{
+			std::printf("Undefined flag (on flag %d which says \"%s\")! ignoring...\n",i,argv[i]);
+		}
 	}
+	Run(trailing, width, height, numWalkers, size, wms, maxAge);
+}
+
+inline void RunTrail(uint64_t width, uint64_t height, uint64_t numWalkers, double size, WalkerMoveStyle wms,uint64_t maxAge)
+{
 	// Walker walker(color,450.0,450.0,5.0,wms);
-	std::vector<Walker> walkers; walkers.reserve(numWalkers);
-	for (uint64_t i{}; i<numWalkers; ++i)
-		walkers.emplace_back(Walker(Color(RNG::uid256(RNG::rngr),RNG::uid256(RNG::rngr),RNG::uid256(RNG::rngr),255),width/2.0,height/2.0,3.0,wms));
 	Canvas canvas(width,height,"Walkers");
 	if (!canvas.CanvasCreateWindow())
-		return -1;
-
+	{
+		std::printf("Couldn't Create Canvas... Quitting!\n"); return;
+	}
+	// populate the vector of Walker(s)
+	std::vector<Walker> walkers; walkers.reserve(numWalkers);
+	for (uint64_t i{}; i<numWalkers; ++i)
+		walkers.emplace_back(Walker(Color(RNG::uid256(RNG::rngr),RNG::uid256(RNG::rngr),RNG::uid256(RNG::rngr),255),width/2.0,height/2.0,size,wms));
+	TrailManager trails(width,height,maxAge);
 	bool running = true;
 	SDL_Event event;
 	while (running)
@@ -204,12 +245,58 @@ int main(int argc, char* argv[])
 				running = false;
 			}
 		}
-		for (auto& walker : walkers)
+		trails.Step();
+		for (uint64_t i{}; i<walkers.size(); ++i)
 		{
-			walker.Step(width,height);
-			DrawWalker(canvas.GetRenderer(),walker);
+			walkers[i].Step(width,height);
+			trails.RecordWalker(i, walkers[i].GetX(), walkers[i].GetY(), walkers[i].GetSize(), walkers[i].GetR(), walkers[i].GetG(), walkers[i].GetB());
+			// walkers[i].Draw(canvas.GetRenderer());
 		}
+		trails.Draw(canvas.GetRenderer());
 		SDL_RenderPresent(canvas.GetRenderer());
-		SDL_Delay(10);
+		SDL_Delay(16);
 	}
+}
+inline void RunNoTrail(uint64_t width, uint64_t height, uint64_t numWalkers, double size, WalkerMoveStyle wms,uint64_t maxAge)
+{
+	// Walker walker(color,450.0,450.0,5.0,wms);
+	Canvas canvas(width,height,"Walkers");
+	if (!canvas.CanvasCreateWindow())
+	{
+		std::printf("Couldn't Create Canvas... Quitting!\n"); return;
+	}
+	// populate the vector of Walker(s)
+	std::vector<Walker> walkers; walkers.reserve(numWalkers);
+	for (uint64_t i{}; i<numWalkers; ++i)
+		walkers.emplace_back(Walker(Color(RNG::uid256(RNG::rngr),RNG::uid256(RNG::rngr),RNG::uid256(RNG::rngr),255),width/2.0,height/2.0,size,wms));
+	// TrailManager trails(width,height,maxAge);
+	bool running = true;
+	SDL_Event event;
+	while (running)
+	{
+		SDL_SetRenderDrawColor(canvas.GetRenderer(),5,5,5,255);
+		SDL_RenderClear(canvas.GetRenderer());
+		while (SDL_PollEvent(&event))
+		{
+			if (event.type==SDL_EVENT_QUIT)
+			{
+				running = false;
+			}
+		}
+		// trails.Step();
+		for (uint64_t i{}; i<walkers.size(); ++i)
+		{
+			walkers[i].Step(width,height);
+			// trails.RecordWalker(i, walkers[i].GetX(), walkers[i].GetY(), walkers[i].GetSize(), walkers[i].GetR(), walkers[i].GetG(), walkers[i].GetB());
+			walkers[i].Draw(canvas.GetRenderer());
+		}
+		// trails.Draw(canvas.GetRenderer());
+		SDL_RenderPresent(canvas.GetRenderer());
+		SDL_Delay(16);
+	}
+}
+inline void Run(bool trail, uint64_t width, uint64_t height, uint64_t numWalkers, double size, WalkerMoveStyle wms,uint64_t maxAge)
+{
+	if (trail) return RunTrail(width,height,numWalkers,size,wms,maxAge);
+	else return RunNoTrail(width,height,numWalkers,size,wms,maxAge);
 }
